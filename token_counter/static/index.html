@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Token Counter — контекст и история</title>
+  <link rel="icon" href="/assets/favicon.svg"><link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+<aside class="rail">
+  <a class="brand" href="#overview"><span class="brand-mark"><img src="/assets/brand-logo.png" alt=""></span><span>TOKEN<br><b>COUNTER</b></span></a>
+  <div class="rail-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+  <nav aria-label="Разделы"><a href="#overview" class="nav-active">◈ <span>Обзор</span></a><a href="#conversations">▤ <span>Диалоги</span></a><a href="#history">↗ <span>История обращений</span></a><a href="#models">▦ <span>Модели и лимиты</span></a></nav>
+  <div class="rail-bottom"><span class="status-dot"></span> Локальный учёт<p>Только числовая статистика.<br>Без записи переписки.</p></div>
+</aside>
+<main>
+  <header class="topbar"><span>МОНИТОРИНГ КОНТЕКСТА</span><div><span id="mode" class="pill">Локальная панель</span><span id="clock">—</span></div></header>
+  <section id="overview">
+    <div class="heading"><div><p class="eyebrow">КАЖДЫЙ ВЫЗОВ НА ВИДУ</p><h1>Контекст под контролем<span>.</span></h1><p class="subtitle">Вход, ответ и запас контекста — отдельно от накопленного расхода.</p></div><button class="primary" id="export">↓ Экспорт истории</button></div>
+    <div class="statusbar" id="statusbar" role="status"><span>Подключение к счётчику…</span></div>
+    <div id="notice" class="notice" hidden></div>
+    <div class="filterbar">
+      <label>Модель<select id="filter-model"><option value="">Все модели</option></select></label>
+      <label>Диалог<select id="selected-conversation"><option value="">Выберите диалог</option></select></label>
+      <button class="secondary" id="advanced-toggle" aria-expanded="false">Фильтры ＋</button>
+    </div>
+    <div id="advanced" class="advanced" hidden>
+      <label>С даты (UTC)<input id="filter-from" type="date"></label><label>До даты (UTC)<input id="filter-to" type="date"></label>
+      <label>Тип<select id="filter-kind"><option value="">Все</option><option value="main">Основной</option><option value="auxiliary">Служебный</option><option value="compaction">Суммаризация</option><option value="unknown">Неизвестен</option></select></label>
+      <label>Usage<select id="filter-usage"><option value="">Все</option><option value="complete">Полный</option><option value="partial">Частичный</option><option value="unknown">Неизвестен</option></select></label>
+      <label>Завершение<select id="filter-status"><option value="">Все</option><option value="completed">Завершён</option><option value="error">Ошибка</option><option value="cancelled">Отменён</option></select></label>
+      <label>Достоверность<select id="filter-accuracy"><option value="">Все</option><option value="provider_reported">Сообщено backend</option><option value="gateway_reported">Сообщено gateway</option><option value="estimated">Оценка</option><option value="unknown">Неизвестна</option></select></label>
+      <label>Instance ID<input id="filter-instance" placeholder="Все установки"></label><label>Project ID<input id="filter-project" placeholder="Все проекты"></label>
+      <label>Session ID<input id="filter-conversation" placeholder="Все сессии"></label><label>Provider ID<input id="filter-provider" placeholder="Все провайдеры"></label>
+      <label>Лимит контекста<input id="filter-limit" type="number" min="1" placeholder="Все лимиты"></label><label>Ревизия<input id="filter-revision" placeholder="Все ревизии"></label><button id="reset" class="quiet">Сбросить фильтры</button>
+    </div>
+    <div class="card-grid" aria-live="polite">
+      <article class="metric"><div class="metric-label">Вход модели <span>↗</span></div><strong id="metric-input">—</strong><p>Весь переданный контекст</p></article>
+      <article class="metric"><div class="metric-label">Ответ модели <span>↙</span></div><strong id="metric-output">—</strong><p>Включая учтённый reasoning</p></article>
+      <article class="metric"><div class="metric-label">Оценка занято <span>◷</span></div><strong id="metric-occupied">—</strong><p>После выбранного ответа</p></article>
+      <article class="metric accent"><div class="metric-label">Оценка остатка <span>✧</span></div><strong id="metric-remaining">—</strong><p>В окне выбранной модели</p></article>
+    </div>
+    <div class="overview-grid">
+      <article class="panel context-panel"><div class="panel-top"><h2>Заполнение контекста</h2><span id="context-status" class="badge">Нет данных</span></div><div class="context-number"><strong id="percent">—</strong><span id="context-model">Выберите диалог</span></div><progress id="context-progress" max="100" value="0" aria-label="Заполнение контекста"></progress><div class="progress-scale"><span>0%</span><span>75%</span><span>100%</span></div><p id="context-caption" class="muted">Оценка появится после обращения с usage.</p><div id="context-source" class="source-line">Источник лимита и usage будет указан здесь.</div></article>
+      <article class="panel total-panel"><div class="panel-top"><h2>Учтено за всё время</h2><span class="micro">ПО ФИЛЬТРАМ</span></div><strong id="total-tokens" class="total-number">—</strong><p class="muted">токенов обработано во всех выбранных вызовах</p><div class="totals-detail"><div><strong id="total-requests">0</strong><span>обращений</span></div><div><strong id="total-complete">0</strong><span>полный usage</span></div><div><strong id="total-unknown">0</strong><span>без полного usage</span></div></div><p id="total-note" class="source-line">Накопленный расход не является размером контекста.</p></article>
+    </div>
+  </section>
+  <section id="conversations" class="panel section-panel"><div class="panel-top"><div><p class="eyebrow">ПОСЛЕДНИЕ РЕЛЕВАНТНЫЕ ВЫЗОВЫ</p><h2>Текущие сессии OpenCode</h2></div><span id="conversation-count" class="badge">0 сессий</span></div><div id="active" class="active-list" hidden></div><div class="table-wrap"><table><thead><tr><th>Название / ID</th><th>Модель</th><th>Вход</th><th>Ответ</th><th>Занято / лимит</th><th>Данные</th></tr></thead><tbody id="conversation-rows"></tbody></table></div><p id="conversations-empty" class="empty">Пока нет сессий с ID. Подключите OpenCode через proxy.</p></section>
+  <section class="panel section-panel" id="recent"><div class="panel-top"><h2>Последние обращения</h2><span class="micro">ОБНОВЛЕНИЕ КАЖДЫЕ 2 СЕКУНДЫ</span></div><div id="recent-list" class="recent-list"></div></section>
+  <section id="history" class="panel section-panel"><div class="panel-top"><div><p class="eyebrow">НИЧЕГО НЕ ТЕРЯЕТСЯ МЕЖДУ ЗАПУСКАМИ</p><h2>Полная история</h2></div><button id="refresh-history" class="secondary">Обновить историю</button></div><p id="new-events" class="notice" hidden>Есть новые обращения. Обновите историю, чтобы открыть новый снимок.</p><div class="table-wrap"><table><thead><tr><th>Время</th><th>Название / ID</th><th>Модель</th><th>Тип</th><th>Вход</th><th>Ответ</th><th>Всего</th><th>Результат</th></tr></thead><tbody id="history-rows"></tbody></table></div><p id="history-empty" class="empty">История пуста. Здесь появится отдельная запись каждого HTTP-вызова.</p><div class="table-footer"><span id="history-count" class="muted">0 записей</span><button id="load-more" class="secondary" hidden>Показать ещё 50</button></div></section>
+  <section id="untracked" class="panel section-panel"><div class="panel-top"><h2>Без сохранённого точного учёта</h2><span id="metadata-status" class="badge">Источник не подключён</span></div><div id="untracked-list"></div><p class="muted">Отсутствие записи не доказывает, что диалог старый: он мог обращаться мимо proxy.</p></section>
+  <section id="models" class="panel section-panel"><div class="panel-top"><h2>Модели и лимиты</h2><span class="micro">ИСТОЧНИКИ УКАЗАНЫ ЯВНО</span></div><div class="table-wrap"><table><thead><tr><th>Alias модели</th><th>Контекст</th><th>Макс. выход</th><th>Источник</th><th>Проверка</th></tr></thead><tbody id="model-rows"></tbody></table></div></section>
+  <footer><h3>Что именно считается?</h3><p>Только запросы, прошедшие через этот proxy. Вход включает переданную историю, инструкции, инструменты и вложения. Занято = вход + ответ. Следующий запрос может отличаться после tool loop или суммаризации. Cache и reasoning не прибавляются повторно.</p><p>Лимиты из конфигурации — условная основа оценки до подтверждения upstream. Токены разных вызовов суммируются как расход, а не как один контекст. Стоимость и скрытые попытки gateway здесь не рассчитываются.</p><span>LOCAL TOKEN COUNTER · v1.0</span></footer>
+</main>
+<dialog id="details"><div class="panel-top"><h2>Детали обращения</h2><button id="close-details" class="secondary">Закрыть</button></div><pre id="details-json"></pre></dialog>
+</body></html>

@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "profiles": {
+    "opencode_litellm": {
+      "models": {
+        "GLM-4.7 (res)": {
+          "context": 204800,
+          "output": 131072,
+          "source": "opencode_config",
+          "modalities": null
+        },
+        "GLM-5.1 (res)": {
+          "context": 204800,
+          "output": 131072,
+          "source": "opencode_config",
+          "modalities": null
+        },
+        "GLM-5.2 (res)": {
+          "context": 1048576,
+          "output": 131072,
+          "source": "opencode_config",
+          "modalities": null
+        },
+        "Kimi K2.6": {
+          "context": 262144,
+          "output": 262144,
+          "source": "opencode_config",
+          "modalities": [
+            "text",
+            "image"
+          ]
+        },
+        "Kimi K2.7": {
+          "context": 262144,
+          "output": 262144,
+          "source": "opencode_config",
+          "modalities": [
+            "text",
+            "image"
+          ]
+        },
+        "MiniMax-M2.7": {
+          "context": 204800,
+          "output": 131072,
+          "source": "opencode_config",
+          "modalities": null
+        },
+        "MiniMax-M3": {
+          "context": 512000,
+          "output": 131072,
+          "source": "opencode_config",
+          "modalities": [
+            "text",
+            "image",
+            "video"
+          ]
+        },
+        "QWEN3.7-plus": {
+          "context": 1000000,
+          "output": 80000,
+          "source": "opencode_config",
+          "modalities": [
+            "text",
+            "image",
+            "video"
+          ]
+        },
+        "mimo-v2.5": {
+          "context": 1000000,
+          "output": 131072,
+          "source": "opencode_config",
+          "modalities": [
+            "text",
+            "image",
+            "video",
+            "audio"
+          ]
+        },
+        "mimo-v2.5-pro": {
+          "context": 1000000,
+          "output": 131072,
+          "source": "opencode_config",
+          "modalities": null
+        }
+      }
+    }
+  }
+}

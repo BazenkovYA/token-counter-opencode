@@ -1,0 +1,10 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {TokenCounterPlugin} from "./token-counter.js";
+process.env.TOKEN_COUNTER_PORT="8001";
+const attachHeaders = (await TokenCounterPlugin())["chat.headers"];
+const input = (sessionID="session-a", baseURL="http://127.0.0.1:8001/v1") => ({sessionID, agent:"build", model:{providerID:"bifrost-litellm"}, provider:{options:{baseURL}}, message:{id:"message-1"}});
+test("per-request session identity and untouched existing headers",()=>{const a={headers:{Existing:"value"}},b={headers:{}};attachHeaders(input(),a,{});attachHeaders(input("session-b"),b,{});assert.equal(a.headers["X-Token-Counter-Session-Id"],"session-a");assert.equal(b.headers["X-Token-Counter-Session-Id"],"session-b");assert.equal(a.headers.Existing,"value");});
+test("no identifiers to remote, wrong port, provider or protocol",()=>{for(const url of ["https://gateway.example.invalid/v1","http://evil.example:8001/v1","http://localhost:8002/v1","https://localhost:8001/v1"]){const out={headers:{}};attachHeaders(input("s",url),out,{});assert.deepEqual(out.headers,{});}const i=input();i.model.providerID="other";const out={headers:{}};attachHeaders(i,out,{});assert.deepEqual(out.headers,{});});
+test("unknown agent, title and compaction classified separately",()=>{for(const [agent,kind]of [["custom","unknown"],["title","auxiliary"],["compaction","compaction"]]){const i=input();i.agent=agent;const out={headers:{}};attachHeaders(i,out,{});assert.equal(out.headers["X-Token-Counter-Request-Kind"],kind);}});
+test("missing session and header injection do not escape",()=>{const out={headers:{}};attachHeaders(input(""),out,{});assert.deepEqual(out.headers,{});attachHeaders(input("bad\r\nAuthorization: secret"),out,{});assert.equal(out.headers["X-Token-Counter-Session-Id"],undefined);});
