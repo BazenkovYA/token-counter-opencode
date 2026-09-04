@@ -48,7 +48,7 @@ def read_config(path):
     return path, raw, data, options
 
 
-def previous_connection(config_path, base, key, plugin_source):
+def previous_connection(config_path, base, key):
     """Validate a prior clone and return its non-secret route plus reusable client key."""
     match = re.fullmatch(r"\{file:(.+)\}", key or "")
     if base not in LOCAL_BASES or not match:
@@ -70,17 +70,18 @@ def previous_connection(config_path, base, key, plugin_source):
     except (OSError, ValueError, KeyError, TypeError):
         raise ConfigurationError("Не удалось проверить файлы подключения предыдущей установки") from None
     expected_plugin = config_path.parent / "plugins" / "token-counter.js"
-    source_hash = hashlib.sha256(plugin_source.read_bytes()).hexdigest()
+    previous_plugin_hash = old_plan.get("plugin_sha256")
     if (old_config != config_path or plugin != expected_plugin.resolve() or
             old_plan.get("provider") != PROVIDER or old_plan.get("changes", {}).get("baseURL") != base or
-            old_plan.get("changes", {}).get("apiKey") != key or old_plan.get("plugin_sha256") != source_hash or
-            not plugin.exists() or hashlib.sha256(plugin.read_bytes()).hexdigest() != source_hash):
+            old_plan.get("changes", {}).get("apiKey") != key or
+            not isinstance(previous_plugin_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", previous_plugin_hash) or
+            not plugin.exists() or hashlib.sha256(plugin.read_bytes()).hexdigest() != previous_plugin_hash):
         raise ConfigurationError("Предыдущее подключение или plugin не совпадают с проверенным планом")
     if (len(client_key) < 24 or values.get("TOKEN_COUNTER_CLIENT_KEY") != client_key):
         raise ConfigurationError("Client key предыдущей установки не прошёл проверку")
     if upstream in LOCAL_BASES or not isinstance(upstream_key, str) or not re.fullmatch(r"\{env:[A-Za-z_][A-Za-z0-9_]*\}", upstream_key):
         raise ConfigurationError("Upstream предыдущей установки нельзя безопасно перенести")
-    return upstream, upstream_key, client_key
+    return upstream, upstream_key, client_key, previous_plugin_hash
 
 
 def prepare(config, env):
@@ -93,8 +94,9 @@ def prepare(config, env):
     plugin_source = ROOT / "integrations/opencode/token-counter.js"
     migrating = base in LOCAL_BASES
     previous_client_key = None
+    previous_plugin_hash = None
     if migrating:
-        base, key, previous_client_key = previous_connection(path, base, key, plugin_source)
+        base, key, previous_client_key, previous_plugin_hash = previous_connection(path, base, key)
     elif not isinstance(key, str) or not re.fullmatch(r"\{env:([A-Za-z_][A-Za-z0-9_]*)\}", key):
         raise ConfigurationError("Автоподготовка принимает только ссылку {env:NAME}; секреты из OpenCode не копируются")
     configured = data["provider"][PROVIDER].get("models")
@@ -144,6 +146,7 @@ def prepare(config, env):
     plan = {"config": str(path), "source_sha256": hashlib.sha256(raw).hexdigest(), "provider": PROVIDER,
             "upstream": base, "changes": changes, "plugin": str(path.parent / "plugins/token-counter.js"),
             "plugin_sha256": hashlib.sha256(plugin_source.read_bytes()).hexdigest(),
+            "plugin_previous_sha256": previous_plugin_hash,
             "plugin_preexisting": migrating,
             "effect": "Изменение только baseURL/apiKey провайдера и установка локального plugin; модели и MCP сохраняются"}
     plan_path = env.parent / "connection-plan.json"
@@ -175,7 +178,12 @@ def apply(env):
     if hashlib.sha256(raw).hexdigest() != plan["source_sha256"]:
         raise ConfigurationError("Конфиг изменён после подготовки; выполните prepare заново")
     plugin_preexisting = bool(plan.get("plugin_preexisting"))
-    if plugin.exists() and (not plugin_preexisting or hashlib.sha256(plugin.read_bytes()).hexdigest() != plan["plugin_sha256"]):
+    previous_plugin_hash = plan.get("plugin_previous_sha256")
+    if plugin_preexisting and (not isinstance(previous_plugin_hash, str) or
+            not re.fullmatch(r"[0-9a-f]{64}", previous_plugin_hash)):
+        raise ConfigurationError("План миграции не содержит проверенный hash предыдущего plugin")
+    if plugin.exists() and (not plugin_preexisting or
+            hashlib.sha256(plugin.read_bytes()).hexdigest() != previous_plugin_hash):
         raise ConfigurationError("Существующий plugin не совпадает с проверенным планом")
     if plugin_preexisting and not plugin.exists():
         raise ConfigurationError("Plugin предыдущего подключения исчез после подготовки")
@@ -184,15 +192,23 @@ def apply(env):
     source = ROOT / "integrations/opencode/token-counter.js"
     if hashlib.sha256(source.read_bytes()).hexdigest() != plan["plugin_sha256"]:
         raise ConfigurationError("Plugin изменился после prepare")
+    plugin_backup = env.parent / "opencode-plugin-before-connect.js"
+    if plugin_preexisting and plugin_backup.exists():
+        raise ConfigurationError("Существует backup plugin прошлого подключения; требуется ручная проверка")
     protected_write(backup, raw)
-    if not plugin_preexisting:
-        plugin.parent.mkdir(parents=True,exist_ok=True)
-        plugin.write_bytes(source.read_bytes())
-    options.update(plan["changes"])
+    previous_plugin = plugin.read_bytes() if plugin_preexisting else None
     try:
+        if previous_plugin is not None:
+            protected_write(plugin_backup, previous_plugin)
+        plugin.parent.mkdir(parents=True,exist_ok=True)
+        protected_write(plugin, source.read_bytes())
+        options.update(plan["changes"])
         protected_write(path, (json.dumps(data,ensure_ascii=False,indent=2)+"\n").encode("utf-8"))
     except OSError:
-        if not plugin_preexisting:
+        if previous_plugin is not None:
+            protected_write(plugin, previous_plugin)
+            plugin_backup.unlink(missing_ok=True)
+        else:
             plugin.unlink(missing_ok=True)
         raise
     return {"applied":True,"config":str(path),"plugin":str(plugin),"next":"Перезапустите OpenCode самостоятельно; затем выполните разрешённый короткий тест"}
@@ -210,12 +226,19 @@ def rollback(env):
     plugin = Path(plan["plugin"])
     if plugin.exists() and hashlib.sha256(plugin.read_bytes()).hexdigest() != plan["plugin_sha256"]:
         raise ConfigurationError("Plugin изменён пользователем; rollback требует ручной проверки")
-    if plan.get("plugin_preexisting") and not plugin.exists():
+    plugin_preexisting = bool(plan.get("plugin_preexisting"))
+    plugin_backup = env.parent / "opencode-plugin-before-connect.js"
+    previous_plugin_hash = plan.get("plugin_previous_sha256")
+    if plugin_preexisting and (not plugin.exists() or not plugin_backup.exists() or
+            not isinstance(previous_plugin_hash, str) or
+            hashlib.sha256(plugin_backup.read_bytes()).hexdigest() != previous_plugin_hash):
         raise ConfigurationError("Plugin предыдущего подключения отсутствует; rollback требует ручной проверки")
     for key in plan["changes"]:
         if key in old:options[key]=old[key]
         else:options.pop(key,None)
     protected_write(path, (json.dumps(data,ensure_ascii=False,indent=2)+"\n").encode("utf-8"))
-    if not plan.get("plugin_preexisting"):
+    if plugin_preexisting:
+        protected_write(plugin, plugin_backup.read_bytes())
+    else:
         plugin.unlink(missing_ok=True)
     return {"rolled_back":True,"note":"Восстановлены только поля подключения; остальные настройки и история сохранены"}

@@ -107,6 +107,28 @@ def test_migration_from_previous_clone_reuses_client_key_and_plugin(staged):
     assert plugin.exists()
 
 
+def test_migration_updates_verified_plugin_and_rollback_restores_it(staged, monkeypatch, tmp_path):
+    config, old_env, _ = staged
+    connection.prepare(config, old_env)
+    connection.apply(old_env)
+    plugin = config.parent / "plugins/token-counter.js"
+    previous_plugin = plugin.read_bytes()
+
+    upgraded_root = tmp_path / "upgraded-source"
+    upgraded_source = upgraded_root / "integrations/opencode/token-counter.js"
+    upgraded_source.parent.mkdir(parents=True)
+    upgraded_source.write_bytes(previous_plugin + b"\n// verified upgrade\n")
+    monkeypatch.setattr(connection, "ROOT", upgraded_root)
+
+    new_env = tmp_path / "upgraded-clone" / ".env"
+    result = connection.prepare(config, new_env)
+    assert result["migrated"] is True
+    connection.apply(new_env)
+    assert plugin.read_bytes() == upgraded_source.read_bytes()
+    connection.rollback(new_env)
+    assert plugin.read_bytes() == previous_plugin
+
+
 def test_invalid_limit_refused_before_credentials_copied(staged):
     config, env, data = staged
     next(iter(data["provider"]["bifrost-litellm"]["models"].values()))["limit"]["context"] = 0
