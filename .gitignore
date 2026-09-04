@@ -17,3 +17,4 @@ Temp/
 .vscode/
 .coverage
 *.egg-info/
+github.txt
